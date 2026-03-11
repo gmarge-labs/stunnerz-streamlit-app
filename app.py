@@ -13,18 +13,20 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 
-# -----------------------------
-# Page config
-# -----------------------------
+# ---------------------------------
+# Page setup
+# ---------------------------------
 st.set_page_config(
     page_title="Stunnerz Skateboards",
+    page_icon="🛹",
     layout="wide"
 )
 
-# -----------------------------
-# Fixed app settings
-# -----------------------------
+# ---------------------------------
+# Fixed configuration
+# ---------------------------------
 APP_TITLE = "Stunnerz Skateboards"
+APP_SUBTITLE = "Marketing spend analytics dashboard"
 OUTCOME_COL = "total_sales"
 CONTROL_COLS = ["promo", "weekday"]
 SPEND_COLS = [
@@ -42,9 +44,47 @@ SPEND_COLS = [
     "google_pmax",
 ]
 
-# -----------------------------
-# Helpers
-# -----------------------------
+# ---------------------------------
+# Styling
+# ---------------------------------
+st.markdown(
+    """
+    <style>
+    .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 1rem;
+    }
+    .metric-card {
+        background-color: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 16px;
+        padding: 18px 20px;
+        margin-bottom: 10px;
+    }
+    .section-card {
+        background-color: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 16px;
+        padding: 14px 16px;
+        margin-bottom: 14px;
+    }
+    .small-label {
+        font-size: 0.9rem;
+        color: #9ca3af;
+    }
+    .big-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #f9fafb;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ---------------------------------
+# Helper functions
+# ---------------------------------
 def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = (
@@ -56,10 +96,18 @@ def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     )
     return df
 
+
 def format_currency(x: float) -> str:
     if pd.isna(x):
         return "N/A"
     return f"${x:,.0f}"
+
+
+def format_pct(x: float) -> str:
+    if pd.isna(x):
+        return "N/A"
+    return f"{x:.1%}"
+
 
 def safe_corr(s1: pd.Series, s2: pd.Series) -> float:
     temp = pd.concat([s1, s2], axis=1).dropna()
@@ -67,21 +115,45 @@ def safe_corr(s1: pd.Series, s2: pd.Series) -> float:
         return np.nan
     return temp.iloc[:, 0].corr(temp.iloc[:, 1])
 
+
 @st.cache_data
 def load_data(uploaded_file) -> pd.DataFrame:
     df = pd.read_csv(uploaded_file)
-    df = clean_columns(df)
-    return df
+    return clean_columns(df)
 
-# -----------------------------
+
+def make_metric_card(label: str, value: str):
+    st.markdown(
+        f"""
+        <div class="metric-card">
+            <div class="small-label">{label}</div>
+            <div class="big-value">{value}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def make_info_card(title: str, value: str):
+    st.markdown(
+        f"""
+        <div class="section-card">
+            <div class="small-label">{title}</div>
+            <div class="big-value" style="font-size:1.1rem;">{value}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# ---------------------------------
 # Header
-# -----------------------------
-st.title(APP_TITLE)
-st.caption("Interactive spend analytics dashboard")
+# ---------------------------------
+st.title(f"🛹 {APP_TITLE}")
+st.caption(APP_SUBTITLE)
 
-# -----------------------------
+# ---------------------------------
 # Sidebar
-# -----------------------------
+# ---------------------------------
 st.sidebar.header("Controls")
 
 uploaded_file = st.sidebar.file_uploader(
@@ -91,20 +163,28 @@ uploaded_file = st.sidebar.file_uploader(
 
 if uploaded_file is None:
     st.markdown("### Upload your dataset to start the dashboard")
+    st.markdown(
+        """
+        This app expects these columns:
+
+        - `date`
+        - `total_sales`
+        - ad spend columns
+        - `promo`
+        - `weekday`
+        """
+    )
     st.stop()
 
-# -----------------------------
-# Load data
-# -----------------------------
+# ---------------------------------
+# Load and validate data
+# ---------------------------------
 try:
     df = load_data(uploaded_file)
 except Exception as e:
     st.error(f"Could not read the uploaded file: {e}")
     st.stop()
 
-# -----------------------------
-# Validate required columns
-# -----------------------------
 required_cols = ["date", OUTCOME_COL] + CONTROL_COLS + SPEND_COLS
 missing_cols = [col for col in required_cols if col not in df.columns]
 
@@ -116,25 +196,24 @@ if missing_cols:
     st.write(list(df.columns))
     st.stop()
 
-# -----------------------------
-# Clean types
-# -----------------------------
+# ---------------------------------
+# Type cleaning
+# ---------------------------------
 df["date"] = pd.to_datetime(df["date"], errors="coerce")
 df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
 
 for col in [OUTCOME_COL] + CONTROL_COLS + SPEND_COLS:
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
-# Drop rows where total_sales is missing
 df = df.dropna(subset=[OUTCOME_COL]).reset_index(drop=True)
 
 if df.empty:
-    st.error("The dataset is empty after cleaning. Check your file.")
+    st.error("The dataset is empty after cleaning.")
     st.stop()
 
-# -----------------------------
-# Sidebar controls after load
-# -----------------------------
+# ---------------------------------
+# Filters
+# ---------------------------------
 min_date = df["date"].min().date()
 max_date = df["date"].max().date()
 
@@ -145,28 +224,14 @@ date_range = st.sidebar.date_input(
     max_value=max_date
 )
 
-rolling_window = st.sidebar.slider(
-    "Rolling average window",
-    min_value=2,
-    max_value=12,
-    value=4
-)
-
-corr_window = st.sidebar.slider(
-    "Rolling correlation window",
-    min_value=2,
-    max_value=12,
-    value=4
-)
+rolling_window = st.sidebar.slider("Rolling average window", 2, 12, 4)
+corr_window = st.sidebar.slider("Rolling correlation window", 2, 12, 4)
 
 selected_channel = st.sidebar.selectbox(
     "Select channel",
-    options=SPEND_COLS
+    SPEND_COLS
 )
 
-# -----------------------------
-# Date filter
-# -----------------------------
 if isinstance(date_range, tuple) and len(date_range) == 2:
     start_date, end_date = date_range
 else:
@@ -181,9 +246,9 @@ if df.empty:
     st.warning("No data available for the selected date range.")
     st.stop()
 
-# -----------------------------
+# ---------------------------------
 # Derived fields
-# -----------------------------
+# ---------------------------------
 df["total_spend"] = df[SPEND_COLS].fillna(0).sum(axis=1)
 df["sales_rolling"] = df[OUTCOME_COL].rolling(rolling_window).mean()
 df["spend_rolling"] = df["total_spend"].rolling(rolling_window).mean()
@@ -196,113 +261,129 @@ long_spend = df.melt(
     value_name="spend"
 )
 
-# -----------------------------
-# KPI metrics
-# -----------------------------
-total_sales = df[OUTCOME_COL].sum()
-total_spend = df["total_spend"].sum()
-avg_sales = df[OUTCOME_COL].mean()
-avg_spend = df["total_spend"].mean()
-spend_sales_ratio = total_spend / total_sales if total_sales != 0 else np.nan
-
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Total Sales", format_currency(total_sales))
-k2.metric("Total Spend", format_currency(total_spend))
-k3.metric("Avg Weekly Sales", format_currency(avg_sales))
-k4.metric("Spend / Sales Ratio", f"{spend_sales_ratio:.2f}" if pd.notna(spend_sales_ratio) else "N/A")
-
-# -----------------------------
-# Quick insights
-# -----------------------------
 channel_totals = df[SPEND_COLS].sum().sort_values(ascending=False)
 channel_corrs = pd.Series(
     {channel: safe_corr(df[channel], df[OUTCOME_COL]) for channel in SPEND_COLS}
 ).sort_values(ascending=False)
 
 top_sales_idx = df[OUTCOME_COL].idxmax()
+top_sales_date = df.loc[top_sales_idx, "date"].date()
 
-with st.expander("Quick business insights", expanded=True):
-    c1, c2 = st.columns(2)
-    c1.write(f"**Highest spend channel:** {channel_totals.index[0]}")
-    c1.write(f"**Lowest spend channel:** {channel_totals.index[-1]}")
-    c2.write(
-        f"**Most correlated with sales:** "
-        f"{channel_corrs.dropna().index[0] if not channel_corrs.dropna().empty else 'N/A'}"
-    )
-    c2.write(f"**Top sales date:** {df.loc[top_sales_idx, 'date'].date()}")
+# ---------------------------------
+# KPI section
+# ---------------------------------
+total_sales = df[OUTCOME_COL].sum()
+total_spend = df["total_spend"].sum()
+avg_sales = df[OUTCOME_COL].mean()
+avg_spend = df["total_spend"].mean()
+spend_sales_ratio = total_spend / total_sales if total_sales != 0 else np.nan
 
-# -----------------------------
+m1, m2, m3, m4 = st.columns(4)
+with m1:
+    make_metric_card("Total Sales", format_currency(total_sales))
+with m2:
+    make_metric_card("Total Spend", format_currency(total_spend))
+with m3:
+    make_metric_card("Avg Weekly Sales", format_currency(avg_sales))
+with m4:
+    make_metric_card("Spend / Sales Ratio", "N/A" if pd.isna(spend_sales_ratio) else f"{spend_sales_ratio:.2f}")
+
+# ---------------------------------
+# Executive summary row
+# ---------------------------------
+c1, c2, c3 = st.columns(3)
+with c1:
+    make_info_card("Highest Spend Channel", channel_totals.index[0])
+with c2:
+    best_corr = channel_corrs.dropna().index[0] if not channel_corrs.dropna().empty else "N/A"
+    make_info_card("Most Correlated With Sales", best_corr)
+with c3:
+    make_info_card("Top Sales Date", str(top_sales_date))
+
+# ---------------------------------
 # Tabs
-# -----------------------------
+# ---------------------------------
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["Overview", "Spend Allocation", "Channel Analysis", "Diagnostics", "Data Preview"]
+    ["Executive Overview", "Spend Allocation", "Channel Analysis", "Diagnostics", "Data Preview"]
 )
 
-# -----------------------------
-# Tab 1: Overview
-# -----------------------------
+# ---------------------------------
+# Tab 1
+# ---------------------------------
 with tab1:
-    st.subheader("Sales trend")
+    left, right = st.columns(2)
 
-    fig_sales = go.Figure()
-    fig_sales.add_trace(
-        go.Scatter(
-            x=df["date"],
-            y=df[OUTCOME_COL],
-            mode="lines",
-            name="Total Sales"
+    with left:
+        fig_sales = go.Figure()
+        fig_sales.add_trace(
+            go.Scatter(
+                x=df["date"],
+                y=df[OUTCOME_COL],
+                mode="lines",
+                name="Total Sales"
+            )
         )
-    )
-    fig_sales.add_trace(
-        go.Scatter(
-            x=df["date"],
-            y=df["sales_rolling"],
-            mode="lines",
-            name=f"{rolling_window}-period rolling average"
+        fig_sales.add_trace(
+            go.Scatter(
+                x=df["date"],
+                y=df["sales_rolling"],
+                mode="lines",
+                name=f"{rolling_window}-period rolling average"
+            )
         )
-    )
-    fig_sales.update_layout(
-        title="Sales Trend",
-        height=420,
-        xaxis_title="Date",
-        yaxis_title="Sales"
-    )
-    st.plotly_chart(fig_sales, use_container_width=True)
+        fig_sales.update_layout(
+            title="Sales Trend",
+            height=420,
+            xaxis_title="Date",
+            yaxis_title="Sales",
+            legend_title=""
+        )
+        st.plotly_chart(fig_sales, use_container_width=True)
 
-    fig_dual = go.Figure()
-    fig_dual.add_trace(
-        go.Scatter(
-            x=df["date"],
-            y=df[OUTCOME_COL],
-            mode="lines",
-            name="Total Sales",
-            yaxis="y1"
+    with right:
+        fig_dual = go.Figure()
+        fig_dual.add_trace(
+            go.Scatter(
+                x=df["date"],
+                y=df[OUTCOME_COL],
+                mode="lines",
+                name="Total Sales",
+                yaxis="y1"
+            )
         )
-    )
-    fig_dual.add_trace(
-        go.Scatter(
-            x=df["date"],
-            y=df["total_spend"],
-            mode="lines",
-            name="Total Spend",
-            yaxis="y2"
+        fig_dual.add_trace(
+            go.Scatter(
+                x=df["date"],
+                y=df["total_spend"],
+                mode="lines",
+                name="Total Spend",
+                yaxis="y2"
+            )
         )
-    )
-    fig_dual.update_layout(
-        title="Sales vs Total Spend",
-        height=420,
-        xaxis=dict(title="Date"),
-        yaxis=dict(title="Sales"),
-        yaxis2=dict(title="Spend", overlaying="y", side="right")
-    )
-    st.plotly_chart(fig_dual, use_container_width=True)
+        fig_dual.update_layout(
+            title="Sales vs Total Spend",
+            height=420,
+            xaxis=dict(title="Date"),
+            yaxis=dict(title="Sales"),
+            yaxis2=dict(title="Spend", overlaying="y", side="right"),
+            legend_title=""
+        )
+        st.plotly_chart(fig_dual, use_container_width=True)
 
-# -----------------------------
-# Tab 2: Spend Allocation
-# -----------------------------
+    summary_df = pd.DataFrame({
+        "Metric": ["Selected Channel", "Selected Channel Total Spend", "Selected Channel Correlation With Sales"],
+        "Value": [
+            selected_channel,
+            format_currency(df[selected_channel].sum()),
+            "N/A" if pd.isna(safe_corr(df[selected_channel], df[OUTCOME_COL])) else f"{safe_corr(df[selected_channel], df[OUTCOME_COL]):.2f}"
+        ]
+    })
+    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+# ---------------------------------
+# Tab 2
+# ---------------------------------
 with tab2:
-    st.subheader("Budget allocation")
-
     left, right = st.columns(2)
 
     with left:
@@ -327,8 +408,7 @@ with tab2:
         spend_share_df = spend_totals_df.copy()
         grand_total_spend = spend_share_df["total_spend"].sum()
         spend_share_df["spend_share"] = (
-            spend_share_df["total_spend"] / grand_total_spend
-            if grand_total_spend != 0 else 0
+            spend_share_df["total_spend"] / grand_total_spend if grand_total_spend != 0 else 0
         )
 
         fig_share = px.bar(
@@ -358,12 +438,10 @@ with tab2:
     )
     st.plotly_chart(fig_area, use_container_width=True)
 
-# -----------------------------
-# Tab 3: Channel Analysis
-# -----------------------------
+# ---------------------------------
+# Tab 3
+# ---------------------------------
 with tab3:
-    st.subheader("Selected channel vs sales")
-
     left, right = st.columns(2)
 
     with left:
@@ -396,25 +474,23 @@ with tab3:
         )
         st.plotly_chart(fig_corr, use_container_width=True)
 
-    corr_table = pd.DataFrame({
+    channel_summary = pd.DataFrame({
         "channel": SPEND_COLS,
-        "correlation_with_sales": [channel_corrs.get(ch, np.nan) for ch in SPEND_COLS],
-        "total_spend": [df[ch].sum() for ch in SPEND_COLS]
+        "total_spend": [df[ch].sum() for ch in SPEND_COLS],
+        "correlation_with_sales": [safe_corr(df[ch], df[OUTCOME_COL]) for ch in SPEND_COLS]
     }).sort_values("correlation_with_sales", ascending=False)
 
-    st.subheader("Channel summary")
-    st.dataframe(corr_table, use_container_width=True)
+    st.subheader("Channel Summary")
+    st.dataframe(channel_summary, use_container_width=True, hide_index=True)
 
-# -----------------------------
-# Tab 4: Diagnostics
-# -----------------------------
+# ---------------------------------
+# Tab 4
+# ---------------------------------
 with tab4:
-    st.subheader("Diagnostics")
+    left, right = st.columns(2)
 
     diag_cols = [OUTCOME_COL] + SPEND_COLS + CONTROL_COLS
     corr_matrix = df[diag_cols].corr(numeric_only=True)
-
-    left, right = st.columns(2)
 
     with left:
         fig_heat = px.imshow(
@@ -462,11 +538,11 @@ with tab4:
     )
     st.plotly_chart(fig_zero, use_container_width=True)
 
-# -----------------------------
-# Tab 5: Data Preview
-# -----------------------------
+# ---------------------------------
+# Tab 5
+# ---------------------------------
 with tab5:
-    st.subheader("Filtered data preview")
+    st.subheader("Filtered Data Preview")
     st.dataframe(df, use_container_width=True)
 
     csv_data = df.to_csv(index=False).encode("utf-8")
