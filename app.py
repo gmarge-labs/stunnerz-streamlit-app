@@ -59,7 +59,14 @@ def load_data_from_bytes(file_bytes: bytes | None, file_name: str | None) -> pd.
         df = pd.read_csv(io.BytesIO(file_bytes))
     else:
         path = DEFAULT_DATA_PATH if DEFAULT_DATA_PATH.exists() else FALLBACK_DATA_PATH
-        df = pd.read_csv(path)
+        #df = pd.read_csv(path)
+        uploaded_file = st.sidebar.file_uploader("Upload CSV file", type=["csv"])
+
+        if uploaded_file is None:
+            st.markdown("### Upload your dataset to start the dashboard")
+            st.stop()
+        
+        df = pd.read_csv(uploaded_file)
 
     expected_cols = {DATE_COL, SALES_COL, PROMO_COL, WEEKDAY_COL, *SPEND_COLUMNS}
     missing = expected_cols.difference(df.columns)
