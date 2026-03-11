@@ -169,7 +169,7 @@ if uploaded_file is None:
 
         - `date`
         - `total_sales`
-        - ad spend columns
+        - `ad spend columns`
         - `promo`
         - `weekday`
         """
