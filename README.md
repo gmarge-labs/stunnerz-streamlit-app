@@ -1,6 +1,7 @@
 # Interactive Marketing Analytics App (Streamlit)
 
-Author: Halima Ladan  
+Author: Halima Bulama Ladan  
+Data Scientist | Marketing Analytics, Experimentation & AI  
 
 ## Overview
 This project is an interactive Streamlit application designed to explore marketing performance data and support data-driven decision-making.
